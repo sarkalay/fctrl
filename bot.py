@@ -151,7 +151,7 @@ def _initialize_trading(self):
     
     # Multiple pairs for more opportunities
     self.available_pairs = [
-        "SOLUSDT", "BTCUSDT", "ETHUSDT", "ADAUSDT", "MATICUSDT"
+        "SOLUSDT", "AVAXUSDT", "ASTERUSDT", "PENGUUSDT"
     ]
     
     self.ai_opened_trades = {}
