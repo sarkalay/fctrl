@@ -1246,7 +1246,7 @@ def execute_ai_trade(self, pair, ai_decision):
         return False
 
 def get_ai_close_decision_v2(self, pair, trade):
-    """BOUNCE-PROOF 3-LAYER EXIT V2 – အမြတ်ပြန်မပေးရအောင် အပြတ်ပိတ်"""
+    """BOUNCE-PROOF 3-LAYER EXIT V2 + PEAK-HARVEST LOGIC – အမြတ်ပြန်မပေးရအောင် အပြတ်ပိတ်"""
     try:
         current_price = self.get_current_price(pair)
         current_pnl = self.calculate_current_pnl(trade, current_price)
@@ -1258,6 +1258,37 @@ def get_ai_close_decision_v2(self, pair, trade):
             trade['peak_pnl'] = current_pnl
         
         peak = trade['peak_pnl']
+        
+        # ==================== 🆕 PEAK-HARVEST LOGIC ====================
+        # မင်းပြောသလို Peak ရောက်တာနဲ့ 50-70% ချက်ချင်းပိတ်မယ်
+        peak_margin_pct = (peak / 100)  # margin ပေါ် % ကို ပြန်တွက်
+        
+        if not trade.get('peak_harvested', False):
+            if peak >= 12.0:  # 12% ကျော်ရင်
+                return {
+                    "should_close": True,
+                    "partial_percent": 70,
+                    "close_type": "PEAK_HARVEST_70",
+                    "reason": f"PEAK HARVEST: +{peak:.1f}% → 70% ချက်ချင်းပိတ်!",
+                    "confidence": 100
+                }
+            elif peak >= 10.0:  # 10% ကျော်ရင်
+                return {
+                    "should_close": True,
+                    "partial_percent": 60,
+                    "close_type": "PEAK_HARVEST_60",
+                    "reason": f"PEAK HARVEST: +{peak:.1f}% → 60% ချက်ချင်းပိတ်!",
+                    "confidence": 100
+                }
+            elif peak >= 8.0:  # 8% ကျော်ရင်
+                return {
+                    "should_close": True,
+                    "partial_percent": 50,
+                    "close_type": "PEAK_HARVEST_50",
+                    "reason": f"PEAK HARVEST: +{peak:.1f}% → 50% ချက်ချင်းပိတ်!",
+                    "confidence": 100
+                }
+        # ==================== PEAK-HARVEST END ====================
 
         # 1. Hard stop -5% က ဘယ်လိုမှ မလွတ်
         if current_pnl <= -5.0:
@@ -1315,7 +1346,8 @@ def get_ai_close_decision_v2(self, pair, trade):
                         closes = [float(k[4]) for k in klines]
                         tr = [max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])) for i in range(1, len(klines))]
                         atr_14 = sum(tr[-14:]) / 14
-            except: pass
+            except: 
+                pass
             
             trail_price = current_price + (2 * atr_14) if trade['direction'] == 'LONG' else current_price - (2 * atr_14)
             if trade['direction'] == 'LONG' and current_price <= trail_price:
@@ -1905,90 +1937,117 @@ class FullyAutonomous1HourPaperTrader:
             return False
 
     def get_ai_close_decision_v2(self, pair, trade):
-        """BOUNCE-PROOF 3-LAYER EXIT V2 – PAPER TRADING VERSION (NO WINNER-TURN-LOSER)"""
-        try:
-            current_price = self.real_bot.get_current_price(pair)
-            current_pnl = self.calculate_current_pnl(trade, current_price)
-            
-            # Peak PnL tracking
-            if 'peak_pnl' not in trade:
-                trade['peak_pnl'] = current_pnl
-            if current_pnl > trade['peak_pnl']:
-                trade['peak_pnl'] = current_pnl
-            
-            peak = trade['peak_pnl']
-
-            # 1. Hard stop -5% က ဘယ်လိုမှ မလွတ်
-            if current_pnl <= -5.0:
+    """BOUNCE-PROOF 3-LAYER EXIT V2 + PEAK-HARVEST LOGIC – PAPER TRADING VERSION"""
+    try:
+        current_price = self.real_bot.get_current_price(pair)
+        current_pnl = self.calculate_current_pnl(trade, current_price)
+        
+        # Peak PnL tracking
+        if 'peak_pnl' not in trade:
+            trade['peak_pnl'] = current_pnl
+        if current_pnl > trade['peak_pnl']:
+            trade['peak_pnl'] = current_pnl
+        
+        peak = trade['peak_pnl']
+        
+        # ==================== 🆕 PEAK-HARVEST LOGIC ====================
+        # Peak ရောက်တာနဲ့ 50-70% ချက်ချင်းပိတ်မယ်
+        if not trade.get('peak_harvested', False):
+            if peak >= 12.0:  # 12% ကျော်ရင်
                 return {
-                    "should_close": True, 
-                    "close_type": "STOP_LOSS", 
-                    "close_reason": "Hard -5% rule", 
-                    "confidence": 100,
-                    "partial_percent": 100
+                    "should_close": True,
+                    "partial_percent": 70,
+                    "close_type": "PEAK_HARVEST_70",
+                    "reason": f"PAPER PEAK HARVEST: +{peak:.1f}% → 70% ချက်ချင်းပိတ်!",
+                    "confidence": 100
                 }
-
-            # 2. 60% Partial @ +9%
-            if peak >= 9.0 and not trade.get('partial_done', False):
-                trade['partial_done'] = True
+            elif peak >= 10.0:  # 10% ကျော်ရင်
                 return {
                     "should_close": True,
                     "partial_percent": 60,
-                    "close_type": "PARTIAL_60",
-                    "reason": f"PAPER: Lock 60% profit @ +{peak:.1f}%",
+                    "close_type": "PEAK_HARVEST_60",
+                    "reason": f"PAPER PEAK HARVEST: +{peak:.1f}% → 60% ချက်ချင်းပိတ်!",
                     "confidence": 100
                 }
-
-            # 3. Instant Breakeven @ +12%
-            if peak >= 12.0 and not trade.get('breakeven_done', False):
-                trade['breakeven_done'] = True
+            elif peak >= 8.0:  # 8% ကျော်ရင်
                 return {
-                    "should_close": False,
-                    "move_sl_to": trade['entry_price'],
-                    "close_type": "BREAKEVEN_ACTIVATED",
-                    "reason": f"PAPER: Breakeven activated @ +{peak:.1f}%",
+                    "should_close": True,
+                    "partial_percent": 50,
+                    "close_type": "PEAK_HARVEST_50",
+                    "reason": f"PAPER PEAK HARVEST: +{peak:.1f}% → 50% ချက်ချင်းပိတ်!",
+                    "confidence": 100
+                }
+        # ==================== PEAK-HARVEST END ====================
+
+        # 1. Hard stop -5% က ဘယ်လိုမှ မလွတ်
+        if current_pnl <= -5.0:
+            return {
+                "should_close": True, 
+                "close_type": "STOP_LOSS", 
+                "close_reason": "Hard -5% rule", 
+                "confidence": 100,
+                "partial_percent": 100
+            }
+
+        # 2. 60% Partial @ +9%
+        if peak >= 9.0 and not trade.get('partial_done', False):
+            trade['partial_done'] = True
+            return {
+                "should_close": True,
+                "partial_percent": 60,
+                "close_type": "PARTIAL_60",
+                "reason": f"PAPER: Lock 60% profit @ +{peak:.1f}%",
+                "confidence": 100
+            }
+
+        # 3. Instant Breakeven @ +12%
+        if peak >= 12.0 and not trade.get('breakeven_done', False):
+            trade['breakeven_done'] = True
+            return {
+                "should_close": False,
+                "move_sl_to": trade['entry_price'],
+                "close_type": "BREAKEVEN_ACTIVATED",
+                "reason": f"PAPER: Breakeven activated @ +{peak:.1f}%",
+                "confidence": 100
+            }
+
+        # 4. Dynamic Profit Floor (75% of Peak)
+        if peak >= 15.0:
+            profit_floor = peak * 0.75
+            if current_pnl <= profit_floor and trade.get('partial_done', False):
+                return {
+                    "should_close": True,
+                    "partial_percent": 100,
+                    "close_type": "PROFIT_FLOOR_HIT",
+                    "reason": f"PAPER: Profit floor hit {profit_floor:.1f}%",
                     "confidence": 100
                 }
 
-            # 4. Dynamic Profit Floor (75% of Peak)
-            if peak >= 15.0:
-                profit_floor = peak * 0.75
-                if current_pnl <= profit_floor and trade.get('partial_done', False):
-                    return {
-                        "should_close": True,
-                        "partial_percent": 100,
-                        "close_type": "PROFIT_FLOOR_HIT",
-                        "reason": f"PAPER: Profit floor hit {profit_floor:.1f}%",
-                        "confidence": 100
-                    }
+        # 5. 2×ATR Trailing
+        if trade.get('partial_done', False) and peak >= 9.0:
+            atr_14 = 0.001
+            trail_price = current_price + (2 * atr_14) if trade['direction'] == 'LONG' else current_price - (2 * atr_14)
+            if trade['direction'] == 'LONG' and current_price <= trail_price:
+                return {
+                    "should_close": True, 
+                    "partial_percent": 100, 
+                    "close_type": "TRAILING_HIT", 
+                    "reason": "PAPER: 2×ATR Trailing",
+                    "confidence": 95
+                }
+            if trade['direction'] == 'SHORT' and current_price >= trail_price:
+                return {
+                    "should_close": True, 
+                    "partial_percent": 100, 
+                    "close_type": "TRAILING_HIT", 
+                    "reason": "PAPER: 2×ATR Trailing",
+                    "confidence": 95
+                }
 
-            # 5. 2×ATR Trailing
-            if trade.get('partial_done', False) and peak >= 9.0:
-                atr_14 = 0.001
-                trail_price = current_price + (2 * atr_14) if trade['direction'] == 'LONG' else current_price - (2 * atr_14)
-                if trade['direction'] == 'LONG' and current_price <= trail_price:
-                    return {
-                        "should_close": True, 
-                        "partial_percent": 100, 
-                        "close_type": "TRAILING_HIT", 
-                        "reason": "PAPER: 2×ATR Trailing",
-                        "confidence": 95
-                    }
-                if trade['direction'] == 'SHORT' and current_price >= trail_price:
-                    return {
-                        "should_close": True, 
-                        "partial_percent": 100, 
-                        "close_type": "TRAILING_HIT", 
-                        "reason": "PAPER: 2×ATR Trailing",
-                        "confidence": 95
-                    }
+        return {"should_close": False}
 
-            # ❌❌❌ NO WINNER-TURN-LOSER LOGIC - COMPLETELY REMOVED ❌❌❌
-
-            return {"should_close": False}
-
-        except Exception as e:
-            return {"should_close": False}
+    except Exception as e:
+        return {"should_close": False}
 
     def paper_execute_trade(self, pair, ai_decision):
         """Execute paper trade WITHOUT TP/SL orders"""
