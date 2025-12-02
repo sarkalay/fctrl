@@ -1939,7 +1939,7 @@ class FullyAutonomous1HourPaperTrader:
     def get_ai_close_decision_v2(self, pair, trade):
         """BOUNCE-PROOF 3-LAYER EXIT V2 + PEAK-HARVEST LOGIC – PAPER TRADING VERSION"""
     try:
-        current_price = self.real_bot.get_current_price(pair)
+        current_price = self.get_current_price(pair)
         current_pnl = self.calculate_current_pnl(trade, current_price)
         
         # Peak PnL tracking
@@ -1951,14 +1951,16 @@ class FullyAutonomous1HourPaperTrader:
         peak = trade['peak_pnl']
         
         # ==================== 🆕 PEAK-HARVEST LOGIC ====================
-        # Peak ရောက်တာနဲ့ 50-70% ချက်ချင်းပိတ်မယ်
+        # မင်းပြောသလို Peak ရောက်တာနဲ့ 50-70% ချက်ချင်းပိတ်မယ်
+        peak_margin_pct = (peak / 100)  # margin ပေါ် % ကို ပြန်တွက်
+        
         if not trade.get('peak_harvested', False):
             if peak >= 12.0:  # 12% ကျော်ရင်
-        	   return {
+                return {
                     "should_close": True,
                     "partial_percent": 70,
                     "close_type": "PEAK_HARVEST_70",
-                    "reason": f"PAPER PEAK HARVEST: +{peak:.1f}% → 70% ချက်ချင်းပိတ်!",
+                    "reason": f"PEAK HARVEST: +{peak:.1f}% → 70% ချက်ချင်းပိတ်!",
                     "confidence": 100
                 }
             elif peak >= 10.0:  # 10% ကျော်ရင်
@@ -1966,7 +1968,7 @@ class FullyAutonomous1HourPaperTrader:
                     "should_close": True,
                     "partial_percent": 60,
                     "close_type": "PEAK_HARVEST_60",
-                    "reason": f"PAPER PEAK HARVEST: +{peak:.1f}% → 60% ချက်ချင်းပိတ်!",
+                    "reason": f"PEAK HARVEST: +{peak:.1f}% → 60% ချက်ချင်းပိတ်!",
                     "confidence": 100
                 }
             elif peak >= 8.0:  # 8% ကျော်ရင်
@@ -1974,7 +1976,7 @@ class FullyAutonomous1HourPaperTrader:
                     "should_close": True,
                     "partial_percent": 50,
                     "close_type": "PEAK_HARVEST_50",
-                    "reason": f"PAPER PEAK HARVEST: +{peak:.1f}% → 50% ချက်ချင်းပိတ်!",
+                    "reason": f"PEAK HARVEST: +{peak:.1f}% → 50% ချက်ချင်းပိတ်!",
                     "confidence": 100
                 }
         # ==================== PEAK-HARVEST END ====================
@@ -1996,7 +1998,7 @@ class FullyAutonomous1HourPaperTrader:
                 "should_close": True,
                 "partial_percent": 60,
                 "close_type": "PARTIAL_60",
-                "reason": f"PAPER: Lock 60% profit @ +{peak:.1f}%",
+                "reason": f"LOCK 60% PROFIT @ +{peak:.1f}% → အမြတ် ချက်ချင်း အိတ်ထဲ!",
                 "confidence": 100
             }
 
@@ -2006,8 +2008,8 @@ class FullyAutonomous1HourPaperTrader:
             return {
                 "should_close": False,
                 "move_sl_to": trade['entry_price'],
-                "close_type": "BREAKEVEN_ACTIVATED",
-                "reason": f"PAPER: Breakeven activated @ +{peak:.1f}%",
+                "close_type": "BREAKEVEN_ACTIVATED", 
+                "reason": f"Peak +{peak:.1f}% → ကျန် 40% ကို BREAKEVEN ချပြီး → ဘယ်လိုမှ မရှုံးနိုင်တော့ဘူး!",
                 "confidence": 100
             }
 
@@ -2019,20 +2021,32 @@ class FullyAutonomous1HourPaperTrader:
                     "should_close": True,
                     "partial_percent": 100,
                     "close_type": "PROFIT_FLOOR_HIT",
-                    "reason": f"PAPER: Profit floor hit {profit_floor:.1f}%",
+                    "reason": f"Peak {peak:.1f}% → 75% floor ({profit_floor:.1f}%) ထိပြီး → ကျန်အကုန် အမြတ်နဲ့ ပိတ်!",
                     "confidence": 100
                 }
 
         # 5. 2×ATR Trailing
         if trade.get('partial_done', False) and peak >= 9.0:
             atr_14 = 0.001
+            try:
+                if self.binance:
+                    klines = self.binance.futures_klines(symbol=pair, interval='1h', limit=50)
+                    if len(klines) >= 15:
+                        highs = [float(k[2]) for k in klines]
+                        lows = [float(k[3]) for k in klines]
+                        closes = [float(k[4]) for k in klines]
+                        tr = [max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])) for i in range(1, len(klines))]
+                        atr_14 = sum(tr[-14:]) / 14
+            except: 
+                pass
+            
             trail_price = current_price + (2 * atr_14) if trade['direction'] == 'LONG' else current_price - (2 * atr_14)
             if trade['direction'] == 'LONG' and current_price <= trail_price:
                 return {
                     "should_close": True, 
                     "partial_percent": 100, 
                     "close_type": "TRAILING_HIT", 
-                    "reason": "PAPER: 2×ATR Trailing",
+                    "reason": "2×ATR Trailing ထိပြီး ထွက်",
                     "confidence": 95
                 }
             if trade['direction'] == 'SHORT' and current_price >= trail_price:
@@ -2040,7 +2054,7 @@ class FullyAutonomous1HourPaperTrader:
                     "should_close": True, 
                     "partial_percent": 100, 
                     "close_type": "TRAILING_HIT", 
-                    "reason": "PAPER: 2×ATR Trailing",
+                    "reason": "2×ATR Trailing ထိပြီး ထွက်",
                     "confidence": 95
                 }
 
@@ -2048,7 +2062,6 @@ class FullyAutonomous1HourPaperTrader:
 
     except Exception as e:
         return {"should_close": False}
-
     def paper_execute_trade(self, pair, ai_decision):
         """Execute paper trade WITHOUT TP/SL orders"""
         try:
