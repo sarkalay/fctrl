@@ -1954,7 +1954,7 @@ class FullyAutonomous1HourPaperTrader:
         # Peak ရောက်တာနဲ့ 50-70% ချက်ချင်းပိတ်မယ်
         if not trade.get('peak_harvested', False):
             if peak >= 12.0:  # 12% ကျော်ရင်
-                return {
+        	   return {
                     "should_close": True,
                     "partial_percent": 70,
                     "close_type": "PEAK_HARVEST_70",
