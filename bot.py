@@ -1880,7 +1880,7 @@ class FullyAutonomous1HourPaperTrader:
             return False
 
     def paper_close_trade_immediately(self, pair, trade, close_reason="AI_DECISION", partial_percent=100):
-    """Close paper trade with CORRECT partial calculation - FIXED VERSION"""
+        """Close paper trade with CORRECT partial calculation - FIXED VERSION"""
     try:
         current_price = self.real_bot.get_current_price(pair)
 
